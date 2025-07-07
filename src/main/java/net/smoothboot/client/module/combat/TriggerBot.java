@@ -8,7 +8,6 @@ import net.minecraft.item.Items;
 import net.minecraft.util.Hand;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
-import net.smoothboot.client.events.Event;
 import net.smoothboot.client.module.Mod;
 import net.smoothboot.client.module.settings.BooleanSetting;
 import net.smoothboot.client.module.settings.NumberSetting;
@@ -17,7 +16,7 @@ public class TriggerBot extends Mod {
 
     protected MinecraftClient mc = MinecraftClient.getInstance();
 
-    public NumberSetting triggerbotdelay = new NumberSetting("Delay", 0, 1, 1, 0.01);
+    public NumberSetting triggerbotdelay = new NumberSetting("Delay", 0, 1, 0.1, 0.01);
     public BooleanSetting triggerbotItem = new BooleanSetting("Check item", false);
     public BooleanSetting triggerbotSword = new BooleanSetting("Check sword", true);
     public BooleanSetting triggerbotTeam = new BooleanSetting("Team check", true);
@@ -28,57 +27,48 @@ public class TriggerBot extends Mod {
         addsettings(triggerbotdelay, triggerbotItem, triggerbotSword, triggerbotTeam, triggerbotCrit);
     }
 
-
     @Override
     public void onTick() {
+        if (nullCheck() || mc.player == null || mc.interactionManager == null || mc.crosshairTarget == null) return;
+
         Entity target = getTarget();
-        if (nullCheck()) {
-            return;
+        if (target == null || !isValid(target)) return;
+
+        // Check if blocking (for some servers)
+        if (triggerbotItem.isEnabled() && mc.player.isUsingItem()) return;
+
+        if (triggerbotSword.isEnabled() && !swordCheck()) return;
+
+        if (triggerbotTeam.isEnabled() && target.isTeammate(mc.player)) return;
+
+        if (triggerbotCrit.isEnabled() && (mc.player.isOnGround() || mc.player.fallDistance <= 0.01f)) return;
+
+        float cooldown = mc.player.getAttackCooldownProgress(0);
+
+        if (cooldown >= triggerbotdelay.getValue()) {
+            mc.interactionManager.attackEntity(mc.player, target);
+            mc.player.swingHand(Hand.MAIN_HAND);
         }
-        if (triggerbotItem.isEnabled() && mc.player.isUsingItem()) {
-            return;
-        }
-        if (triggerbotSword.isEnabled() && !swordCheck()) {
-            return;
-        }
-        if (target != null && isValid(target) && mc.currentScreen == null) {
-            float fallDist = mc.player.fallDistance;
-            if (triggerbotTeam.isEnabled() && target.isTeammate(mc.player)) {
-                return;
-            }
-            if (triggerbotCrit.isEnabled() && fallDist <= 0.01F && !mc.player.isOnGround()) {
-                return;
-            }
-            if (mc.player.getAttackCooldownProgress(0) >= triggerbotdelay.getValue()) {
-                mc.interactionManager.attackEntity(mc.player, mc.targetedEntity);
-                mc.player.swingHand(Hand.MAIN_HAND);
-            } else if (mc.player.getAttackCooldownProgress(0) >= triggerbotdelay.getValue()) {
-                mc.interactionManager.attackEntity(mc.player, mc.targetedEntity);
-                mc.player.swingHand(Hand.MAIN_HAND);
-            }
-        }
-        super.onTick();
     }
 
     private Entity getTarget() {
-        HitResult hitResult = mc.crosshairTarget;
-
-        if (hitResult.getType() == HitResult.Type.ENTITY) {
-            EntityHitResult entityHitResult = (EntityHitResult) hitResult;
-            return entityHitResult.getEntity();
+        if (mc.crosshairTarget.getType() == HitResult.Type.ENTITY) {
+            return ((EntityHitResult) mc.crosshairTarget).getEntity();
         }
-
         return null;
     }
 
-    public boolean swordCheck() {
-        ItemStack getItem = mc.player.getMainHandStack();
-        return (getItem.isOf(Items.NETHERITE_SWORD) || getItem.isOf(Items.DIAMOND_SWORD) || getItem.isOf(Items.GOLDEN_SWORD) || getItem.isOf(Items.IRON_SWORD) || getItem.isOf(Items.STONE_SWORD) || getItem.isOf(Items.WOODEN_SWORD));
+    private boolean swordCheck() {
+        ItemStack item = mc.player.getMainHandStack();
+        return item.getItem() == Items.NETHERITE_SWORD
+            || item.getItem() == Items.DIAMOND_SWORD
+            || item.getItem() == Items.IRON_SWORD
+            || item.getItem() == Items.STONE_SWORD
+            || item.getItem() == Items.GOLDEN_SWORD
+            || item.getItem() == Items.WOODEN_SWORD;
     }
-
 
     private boolean isValid(Entity entity) {
-        return (entity instanceof PlayerEntity && !((PlayerEntity) entity).isDead());
+        return entity instanceof PlayerEntity && entity.isAlive() && !entity.isInvisible();
     }
-
 }
